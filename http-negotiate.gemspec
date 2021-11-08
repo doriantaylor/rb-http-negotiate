@@ -6,9 +6,9 @@ Gem::Specification.new do |spec|
   spec.version       = HTTP::Negotiate::VERSION
   spec.authors       = ['Dorian Taylor']
   spec.email         = ['code@doriantaylor.com']
-
-  spec.summary       = 'An implementation of Gisle Aas\'s HTTP::Negotiate'
+  spec.license       = 'Apache-2.0'
   spec.homepage      = 'https://github.com/doriantaylor/rb-http-negotiate'
+  spec.summary       = 'An implementation of Gisle Aas\'s HTTP::Negotiate'
 
   spec.metadata['homepage_uri']    = spec.homepage
   spec.metadata['source_code_uri'] = spec.homepage
@@ -29,7 +29,7 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = Gem::Requirement.new(">= 2.4.0")
 
   # dev/test dependencies
-  spec.add_development_dependency 'bundler', '>= 2.1.4'
-  spec.add_development_dependency 'rake',    '>= 13.0'
-  spec.add_development_dependency 'rspec',   '>= 3.9'
+  spec.add_development_dependency 'bundler', '~> 2.2'
+  spec.add_development_dependency 'rake',    '~> 13.0'
+  spec.add_development_dependency 'rspec',   '~> 3.10'
 end

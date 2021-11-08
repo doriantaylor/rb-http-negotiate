@@ -4,12 +4,15 @@ RSpec.describe HTTP::Negotiate do
   end
 
   it 'correctly negotiates some variants' do
-    headers  = { Accept: 'text/html, */*;q=0' }
+    headers  = { Accept: 'text/html, */*;q=0', "Accept-Language": 'en-us' }
     variants = {
-      lol: [1, 'text/html', nil, 'iso-8859-1', 'en', 31337],
-      wut: [1, 'application/xml', nil, 'utf-8', 'en', 12345],
+      lol:  [0.5, 'text/html',       nil, 'iso-8859-1',  'en', 31337],
+      wut:  [1.0, 'application/xml', nil, 'utf-8',       'en', 12345],
+      hurr: [0.1, 'text/plain'                                      ],
+      good: [0.5, 'text/html',       nil, 'utf-8',       'en', 22222],
     }
-    chosen = HTTP::Negotiate.negotiate headers, variants
-    expect(chosen).to eql :lol
+    # XXX you know, do some actual tests
+    chosen = HTTP::Negotiate.negotiate headers, variants, add_langs: true
+    expect(chosen).to eql :good
   end
 end

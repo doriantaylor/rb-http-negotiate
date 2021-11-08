@@ -8,10 +8,15 @@ module HTTP::Negotiate
   HEADERS = { type: '' }.merge(
     %i[charset language encoding].map { |k| [k, ?_ + k.to_s.upcase] }.to_h)
 
+  # these are for the hash representation of variant metadata
+  KEYS = %i[weight type encoding charset language size].freeze
+
   public
 
   # The variant mapping takes the following form:
   # { variant => [weight, type, encoding, charset, language, size] }
+  #
+  # (Alternatively this array can be a hash with the same keys as symbols.)
   #
   # * the variant can be anything, including the actual variant
   # * the weight is a number between 0 and 1 denoting the initial
@@ -19,7 +24,7 @@ module HTTP::Negotiate
   # * type, encoding, charset, language are all strings containing
   #   their respective standardized tokens (note "encoding" is like
   #   `gzip`, not like `utf-8`: that's "charset")
-  # * size is the number of bytes
+  # * size is the number of bytes, an integer
   #
   # Returns either the winning variant or all variants if requested,
   # sorted by the algorithm, or nil or the empty array if none are
@@ -27,19 +32,18 @@ module HTTP::Negotiate
   #
   # @param request [Hash,Rack::Request,#env] Anything roughly a hash of headers
   # @param variants [Hash] the variants, described above
-  # @param all [false, true] whether to return 
+  # @param add_langs [false, true] whether to supplant language tags
+  # @param all [false, true] whether to return a sorted list or not
+  # @param cmp [Proc] a secondary comparison of variants as a tiebreaker
   #
-  def negotiate request, variants, all: false
+  def negotiate request, variants, add_langs: false, all: false, cmp: nil
     # pull accept headers
     request = request.env if request.respond_to? :env
     # this will ensure that the keys will match irrespective of
     # whether it's passed in as actual http headers or a cgi-like env
     request = request.transform_keys do |k|
-      if /^Accept(-.+)?$/i.match? k.to_s
-        'HTTP_' + k.to_s.upcase.tr(?-, ?_)
-      else
-        k
-      end
+      k = k.to_s.strip
+      /^Accept(-.*)?$/i.match?(k) ? "HTTP_#{k.upcase.tr ?-, ?_}" : k
     end
 
     # the working set
@@ -48,8 +52,16 @@ module HTTP::Negotiate
     HEADERS.each do |k, h|
       if hdr = request["HTTP_ACCEPT#{h}"]
         defq = 1.0
-        # theoretically you can have quoted-string parameters but we don't care
+        # strip out all the whitespace from the header value;
+        # theoretically you can have quoted-string parameter values
+        # but we don't care (although interestingly according to rfc7231,
+        # accept-language only affords q= and not arbitrary parameters)
         hdr = hdr.dup.gsub(/\s+/, '')
+
+        # don't add the test group if it's an empty string, because
+        # postel's law is a thing
+        next if hdr.empty?
+
         accept[k] = hdr.split(/,+/).map do |c|
           val, *params = c.split(/;+/)
           params = params.map do |p|
@@ -71,9 +83,31 @@ module HTTP::Negotiate
       end
     end
 
+    # sneakily supplant shorter language tags at 99% q
+    if accept[:language]
+      langs = accept[:language]
+      langs.transform_keys! { |k| k.tr(?_, ?-).tr_s(?-, ?-).downcase }
+      if add_langs
+        langs.keys.select { |k| k.include? ?- }.each do |k|
+          # a tag with q=0 has to be explicitly set in the header
+          next if (q = langs[k][:q]) == 0
+          lang = k.split ?-
+          (1..lang.length).to_a.reverse.each do |i|
+            # each shorter language tag will have a slightly lower score
+            langs[lang.slice(0, i).join ?-] ||= { q: q *= 0.999 }
+          end
+        end
+      end
+    end
+
+    # convert variants to array
+    variants = variants.transform_values do |v|
+      v.is_a?(Hash) ? v.values_at(*KEYS) : v
+    end
+
     # check if any of the variants specify a language, since this will
     # affect the scoring
-    any_lang = variants.values.any? { |v| v[5] }
+    any_lang = variants.values.any? { |v| v[4] }
 
     # chosen will be { variant => value }
     scores = {}
@@ -151,31 +185,32 @@ module HTTP::Negotiate
         # warn maj.inspect, min.inspect
 
         # XXX match params at some point
-        if at[maj]
-          if at[maj][min]
-            qt = at[maj][min][:q]
-          elsif at[maj][?*]
-            qt = at[maj][?*][:q]
-          else
-            qt = 0.1
-          end
-        elsif at[?*]
-          # ???
-          qt = at[?*].fetch(?*, { q: 0.1 })[:q]
-        else
-          # ???
-          qt = 0.1
-        end
+        qt = if at.fetch(maj, {})[min]
+               at[maj][min][:q]
+             elsif at.fetch(maj, {})[?*]
+               at[maj][?*][:q]
+             elsif at.fetch(?*, {})[?*]
+               at[?*][?*][:q]
+             else
+               0.1
+             end
 
       end
 
-      scores[var] = qs * qe * qc * ql * qt
+      scores[var] = [qs * qe * qc * ql * qt, size]
     end
 
-    chosen = scores.sort { |a, b| b.last <=> a.last }.map(&:first)
+    # XXX do something smarter here for secondary comparison
+    cmp ||= -> a, b { 0 }
+
+    chosen = scores.sort do |a, b|
+      c = b.last.first <=> a.last.first        # first compare scores
+      c = cmp.call(a.first, b.first) if c == 0 # then secondary cmp
+      c == 0 ? a.last.last <=> b.last.last : c # then finally by size
+    end.map(&:first)
+
     all ? chosen : chosen.first
   end
 
   extend self
 end
-
