@@ -4,7 +4,7 @@ RSpec.describe HTTP::Negotiate do
   end
 
   it 'correctly negotiates some variants' do
-    headers  = { Accept: 'text/html, */*;q=0', "Accept-Language": 'en-us' }
+    headers  = { Accept: 'text/html, */*;q=0', "Accept-Language": 'en-us, *;q=0' }
     variants = {
       lol:  [0.5, 'text/html',       nil, 'iso-8859-1',  'en', 31337],
       wut:  [1.0, 'application/xml', nil, 'utf-8',       'en', 12345],

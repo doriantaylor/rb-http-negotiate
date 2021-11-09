@@ -145,24 +145,30 @@ module HTTP::Negotiate
 
       # calculate the language quality
       ql = 1
-      if accept[:language] and language
-        ql = 0.001 # initial value is very low but not zero
-        lang = language.split(/-+/)
-        (1..lang.length).to_a.reverse.each do |i|
-          test = lang.slice(0, i).join ?-
-          if accept[:language][test]
-            al = accept[:language][test][:q]
-            if al == 0
-              ql = 0
-              break
-            elsif al > ql
-              ql = al
+      if accept[:language]
+        if language
+          ql = 0.001 # initial value is very low but not zero
+          lang = language.split(/-+/)
+          (0..lang.length).to_a.reverse.each do |i|
+            # apparently there is no wildcard for accept-language? no
+            # wait there is: rfc4647 $2.1 via rfc7231 $5.3.5
+            test = i > 0 ? lang.slice(0, i).join(?-) : ?*
+            if accept[:language][test]
+              al = accept[:language][test][:q]
+              # *;q=0 will override 
+              if al == 0 and test != ?*
+                ql = 0
+                break
+              elsif al > ql
+                ql = al
+              end
             end
           end
+        elsif any_lang
+          # XXX not sure if language-less variants in the same pool
+          # with language-y ones
+          ql = 0.5
         end
-        # apparently there is no wildcard for accept-language?
-      elsif accept[:language] and any_lang
-        ql = 0.5
       end
 
       # calculate the type quality
