@@ -13,32 +13,31 @@ module HTTP::Negotiate
 
   public
 
-  # The variant mapping takes the following form:
-  # { variant => [weight, type, encoding, charset, language, size] }
+  # Return a parsed representation of the relevant header
+  # set. Translates `Accept-*` (`HTTP_ACCEPT_*`) into lower-case
+  # symbols, so `Accept-Language` or `HTTP_ACCEPT_LANGUAGE` becomes
+  # `:language`. Same for `:charset`, and `:encoding`, etc., save for
+  # plain `Accept` which is translated to `:type`. The parameter
+  # `:add_langs` will supplement `Accept-Language` assertions of
+  # specific languages with their more generic counterparts, if not
+  # already present in the header, with a slightly lower quality
+  # score, e.g. `en-us` adds `en;q=0.999`, `zh-cn;q=0.8` adds
+  # `zh;q=0.799`.
   #
-  # (Alternatively this array can be a hash with the same keys as symbols.)
+  # @param request [Hash, Rack::Request, #env] Anything roughly a hash
+  #  of headers
+  # @param add_langs [false, true] whether to supplement language tags
   #
-  # * the variant can be anything, including the actual variant
-  # * the weight is a number between 0 and 1 denoting the initial
-  #   preference for the variant
-  # * type, encoding, charset, language are all strings containing
-  #   their respective standardized tokens (note "encoding" is like
-  #   `gzip`, not like `utf-8`: that's "charset")
-  # * size is the number of bytes, an integer
+  # @return [Hash] the parsed `Accept*` headers
   #
-  # Returns either the winning variant or all variants if requested,
-  # sorted by the algorithm, or nil or the empty array if none are
-  # selected.
-  #
-  # @param request [Hash,Rack::Request,#env] Anything roughly a hash of headers
-  # @param variants [Hash] the variants, described above
-  # @param add_langs [false, true] whether to supplant language tags
-  # @param all [false, true] whether to return a sorted list or not
-  # @param cmp [Proc] a secondary comparison of variants as a tiebreaker
-  #
-  def negotiate request, variants, add_langs: false, all: false, cmp: nil
+  def parse_headers request, add_langs: false
     # pull accept headers
     request = request.env if request.respond_to? :env
+
+    # no-op if this is already parsed
+    return request if request.is_a? Hash and
+      request.all? { |k, v| k.is_a? Symbol and v.is_a? Hash }
+
     # this will ensure that the keys will match irrespective of
     # whether it's passed in as actual http headers or a cgi-like env
     request = request.transform_keys do |k|
@@ -67,7 +66,7 @@ module HTTP::Negotiate
           params = params.map do |p|
             k, v = p.split(/=+/, 2)
             k = k.downcase.to_sym
-            v = v.to_f if v and k == :q 
+            v = v.to_f if v and k == :q
             [k, v]
           end.to_h
           if params[:q]
@@ -99,6 +98,35 @@ module HTTP::Negotiate
         end
       end
     end
+
+    accept
+  end
+
+  # The variant mapping takes the following form:
+  # { variant => [weight, type, encoding, charset, language, size] }
+  #
+  # (Alternatively this array can be a hash with the same keys as symbols.)
+  #
+  # * the variant can be anything, including the actual variant
+  # * the weight is a number between 0 and 1 denoting the initial
+  #   preference for the variant
+  # * type, encoding, charset, language are all strings containing
+  #   their respective standardized tokens (note "encoding" is like
+  #   `gzip`, not like `utf-8`: that's "charset")
+  # * size is the number of bytes, an integer
+  #
+  # Returns either the winning variant or all variants if requested,
+  # sorted by the algorithm, or nil or the empty array if none are
+  # selected.
+  #
+  # @param request [Hash,Rack::Request,#env] Anything roughly a hash of headers
+  # @param variants [Hash] the variants, described above
+  # @param add_langs [false, true] whether to supplement language tags
+  # @param all [false, true] whether to return a sorted list or not
+  # @param cmp [Proc] a secondary comparison of variants as a tiebreaker
+  #
+  def negotiate request, variants, add_langs: false, all: false, cmp: nil
+    accept = parse_headers request, add_langs: add_langs
 
     # convert variants to array
     variants = variants.transform_values do |v|
@@ -155,7 +183,7 @@ module HTTP::Negotiate
             test = i > 0 ? lang.slice(0, i).join(?-) : ?*
             if accept[:language][test]
               al = accept[:language][test][:q]
-              # *;q=0 will override 
+              # *;q=0 will override
               if al == 0 and test != ?*
                 ql = 0
                 break
