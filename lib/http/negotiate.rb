@@ -229,11 +229,13 @@ module HTTP::Negotiate
              else
                0.1
              end
-
       end
 
       scores[var] = [qs * qe * qc * ql * qt, size]
     end
+
+    # DUH DON'T FORGET TO NUKE THE ZERO SCORES
+    scores.reject! { |_, s| s.first == 0 }
 
     # XXX do something smarter here for secondary comparison
     cmp ||= -> a, b { 0 }

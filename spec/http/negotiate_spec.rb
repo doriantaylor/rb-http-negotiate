@@ -20,5 +20,10 @@ RSpec.describe HTTP::Negotiate do
 
     chosen = HTTP::Negotiate.negotiate headers, variants, add_langs: true
     expect(chosen).to eql :good
+
+    headers = { Accept: %w[image/x-bogus */*;q=0] }
+
+    chosen = HTTP::Negotiate.negotiate headers, variants, add_langs: true
+    expect(chosen).to be_nil
   end
 end
