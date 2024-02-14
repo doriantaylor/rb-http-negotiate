@@ -55,18 +55,19 @@ module HTTP::Negotiate
         # theoretically you can have quoted-string parameter values
         # but we don't care (although interestingly according to rfc7231,
         # accept-language only affords q= and not arbitrary parameters)
-        hdr = hdr.dup.gsub(/\s+/, '')
+        hdr = hdr.respond_to?(:to_a) ? hdr.to_a.dup : hdr.to_s.split(/\s*,+\s*/)
+        hdr = hdr.map { |h| h.to_s.gsub(/\s+/, '') }.reject(&:empty?)
 
         # don't add the test group if it's an empty string, because
         # postel's law is a thing
         next if hdr.empty?
 
-        accept[k] = hdr.split(/,+/).map do |c|
+        accept[k] = hdr.map do |c|
           val, *params = c.split(/;+/)
           params = params.map do |p|
-            k, v = p.split(/=+/, 2)
+            k, v = p.split(/\s*=+\s*/, 2)
             k = k.downcase.to_sym
-            v = v.to_f if v and k == :q
+            v = v.to_f if v and k == :q # note garbage will return 0
             [k, v]
           end.to_h
           if params[:q]

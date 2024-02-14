@@ -14,5 +14,11 @@ RSpec.describe HTTP::Negotiate do
     # XXX you know, do some actual tests
     chosen = HTTP::Negotiate.negotiate headers, variants, add_langs: true
     expect(chosen).to eql :good
+
+    headers = {
+      Accept: %i[text/html */*;q=0], "Accept-Language": %i[en-us *;q=0] }
+
+    chosen = HTTP::Negotiate.negotiate headers, variants, add_langs: true
+    expect(chosen).to eql :good
   end
 end
